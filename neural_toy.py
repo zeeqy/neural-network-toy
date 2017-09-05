@@ -142,7 +142,7 @@ class binary_rbm(object):
             h = self.propup(x)
             h_state = np.random.binomial(size=h.shape,n=1,p=h)
             
-            "k=1, CD-1, machine dreaming..."
+            "CD-k, machine dreaming..."
             for step in range(k):
                 if step == 0:
                     nx_samples,nh_samples = self.gibbs_hvh(h_state)
@@ -161,14 +161,18 @@ class binary_rbm(object):
         h = self.propup(x)
         reconstructed_x = self.propdown(h)
         return reconstructed_x
+    
+    def transfer(self,x):
+        h = self.propup(x)
+        return np.random.binomial(size=h.shape,n=1,p=h)
 
                 
 class guassian_rbm(object):
-    def __init__(self, n_node, n_epoch, n_input_dim, sigma, weight_learning_rate,steep_learning_rate, random_state):
+    def __init__(self, n_node, n_epoch, n_input_dim, sigma, weight_learning_rate,slop_learning_rate, random_state):
         
         self.num_node = n_node
         self.weight_rate = weight_learning_rate
-        self.steep_rate = steep_learning_rate
+        self.slop_rate = slop_learning_rate
         self.num_input_dim = n_input_dim
         self.num_epoch = n_epoch
         
@@ -180,22 +184,23 @@ class guassian_rbm(object):
         #visible layer bias
         self.vbias = np.ones((1, self.num_input_dim))
         #steepness of the sigmoid function
-        self.steep = np.ones((1, self.num_node))
-
+        self.hslop = np.ones((1, self.num_node))
+        self.vslop = np.ones((1, self.num_input_dim))
+        
         self.sig = sigma
-
-        self.steep_T = 0.1 * np.ones((1,self.num_input_dim))
 
     def sigmoid(self, t):
         return 1.0 / (1 + np.exp(-1.0*t))
     
     def propup(self, x):
-        z1 = self.steep*(x.dot(self.v) + self.hbias + self.sig*np.random.normal(size=self.num_node))
-        return self.sigmoid(z1)
+        z1 = self.hslop*(x.dot(self.v) + self.hbias + self.sig*np.random.normal(size=self.num_node))
+        #return np.min(x,axis=1).reshape(x.shape[0],1) + (np.max(x,axis=1) - np.min(x,axis=1)).reshape(x.shape[0],1) * self.sigmoid(z1)
+        return self.sigmoid(z1) 
 
     def propdown(self, h):
-        z2 = self.steep_T*(h.dot(self.v.T) + self.vbias + self.sig*np.random.normal(size=self.num_input_dim))
-        return self.sigmoid(z2)
+        z2 = self.vslop*(h.dot(self.v.T) + self.vbias + self.sig*np.random.normal(size=self.num_input_dim))
+        #return np.min(h,axis=1).reshape(h.shape[0],1) + (np.max(h,axis=1) - np.min(h,axis=1)).reshape(h.shape[0],1) * self.sigmoid(z2)
+        return self.sigmoid(z2) 
     
     def gibbs_hvh(self,h_state):
         "hidden to visible"
@@ -204,7 +209,7 @@ class guassian_rbm(object):
         
         "then visible to hidden"
         h = self.propup(v_state)
-        h_state = h#np.random.binomial(size=h.shape,n=1,p=h)
+        h_state = h #np.random.binomial(size=h.shape,n=1,p=h)
         
         return v_state,h_state
         
@@ -216,12 +221,12 @@ class guassian_rbm(object):
         self.size = float(x.shape[0])
         
         for i in range(self.num_epoch):
-            self.model = {'v':self.v,'steep':self.steep}
+            self.model = {'v':self.v,'hslop':self.hslop,'hbias':self.hbias,'vbias':self.vbias,'vslop':self.vslop}
             
             h = self.propup(x)
-            h_state = h#np.random.binomial(size=h.shape,n=1,p=h)
+            h_state = h #np.random.binomial(size=h.shape,n=1,p=h)
             
-            "k=1, CD-1."
+            "CD-k. machine dreaming..."
             for step in range(k):
                 if step == 0:
                     nx_samples,nh_samples = self.gibbs_hvh(h_state)
@@ -231,7 +236,8 @@ class guassian_rbm(object):
             self.v += self.weight_rate * (x.T.dot(h) - nx_samples.T.dot(nh_samples))/self.size
             self.hbias += self.weight_rate * np.mean(h - nh_samples,axis=0)
             self.vbias += self.weight_rate * np.mean(x - nx_samples,axis=0)
-            self.steep += self.steep_rate * np.mean(h**2 - nh_samples**2,axis=0)/(self.steep**2)
+            self.hslop += self.slop_rate * np.mean(h**2 - nh_samples**2,axis=0)/(self.hslop**2)
+            #self.vslop += self.slop_rate * np.mean(x**2 - nx_samples**2,axis=0)/(self.vslop**2)
             
             if print_loss and i%print_step == 0:
                 monitoring_cost = np.mean((x - nx_samples)**2)
